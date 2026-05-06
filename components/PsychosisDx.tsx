@@ -43,6 +43,8 @@ const DIAGNOSES = [
   { id: "bvftd", label: "Behavioral-variant FTD", base: -3, category: "neurodegen" },
 ];
 
+type DxId = (typeof DIAGNOSES)[number]["id"];
+
 // Feature catalog. Each feature carries weights per diagnosis.
 // Grouped for UI organization.
 const FEATURES = [
@@ -436,7 +438,7 @@ const RED_FLAGS = {
 type Feature = {
   id: string;
   label: string;
-  weights?: Record<string, number>;
+  weights?: Partial<Record<DxId, number>>;
   redFlag?: string;
   rules_in?: string;
   group?: string;
@@ -444,15 +446,16 @@ type Feature = {
 type Contribution = { feature: string; weight: number };
 
 function scoreAll(activeFeatures: Feature[]) {
-  const dxScores: Record<string, number> = Object.fromEntries(DIAGNOSES.map((d) => [d.id, d.base]));
-  const dxContrib: Record<string, Contribution[]> = Object.fromEntries(DIAGNOSES.map((d) => [d.id, []]));
+  const dxScores: Record<DxId, number> = Object.fromEntries(DIAGNOSES.map((d) => [d.id, d.base]));
+  const dxContrib: Record<DxId, Contribution[]> = Object.fromEntries(DIAGNOSES.map((d) => [d.id, []]));
   const triggeredFlags = new Set<string>();
   const ruledIn = new Set<string>();
   const activeIds = new Set(activeFeatures.map((f) => f.id));
 
   for (const f of activeFeatures) {
     if (f.weights) {
-      for (const [dx, w] of Object.entries(f.weights)) {
+      for (const [dxKey, w] of Object.entries(f.weights)) {
+        const dx = dxKey as DxId;
         if (dxScores[dx] !== undefined) {
           dxScores[dx] += w as number;
           dxContrib[dx].push({ feature: f.label, weight: w as number });
