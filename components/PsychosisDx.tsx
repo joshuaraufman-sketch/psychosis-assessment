@@ -498,6 +498,209 @@ function scoreAll(activeFeatures: Feature[]) {
 }
 
 // ============================================================
+// Narrative summary generation
+// ============================================================
+// Deterministic, template-based. PHI-free. Designed to drop into
+// HPI / A&P prose. Mentions top 3 differential with reasoning,
+// red flags triggered, and notable absences.
+
+const PROSE_LABELS: Record<string, string> = {
+  age_under18: "under 18 years old",
+  age_18_30: "in the 18–30 age range",
+  age_30_45: "in the 30–45 age range",
+  age_45_60: "in the 45–60 age range",
+  age_over60: "over 60 years old",
+  sex_female: "female",
+  sex_male: "male",
+  currently_pregnant: "currently pregnant",
+  within_year_postpartum: "within one year postpartum",
+  fhx_scz: "a family history of schizophrenia",
+  fhx_bipolar: "a family history of bipolar disorder",
+  fhx_neurodegen: "a family history of dementia or FTD",
+  fhx_autoimmune: "a family history of autoimmune disease",
+  prior_psychosis: "prior psychotic episodes",
+  first_episode: "presenting in a first lifetime episode",
+  fluctuating_attention: "fluctuating attention with clouded sensorium",
+  clear_sensorium: "a clear sensorium",
+  cognitive_decline: "progressive cognitive and personality decline",
+  perplexity: "perplexity with motor disturbance",
+  hours_days: "onset over hours to days",
+  polymorphic_2wk: "a polymorphic, rapidly shifting picture under two weeks",
+  insidious_prodrome: "an insidious prodrome over weeks to months",
+  postpartum_window: "onset within 1–14 days postpartum",
+  mania_active: "an active manic episode",
+  depression_active: "an active major depressive episode",
+  psychosis_only_in_mood: "psychosis confined to mood episodes",
+  psychosis_outside_mood: "psychosis persisting outside mood episodes",
+  auditory_3p: "third-person auditory hallucinations",
+  auditory_mood_congruent: "mood-congruent auditory hallucinations",
+  auditory_condemning: "derogatory auditory hallucinations in clear sensorium",
+  tactile_formication: "tactile hallucinations / formication",
+  visual_inanimate: "visual hallucinations of inanimate objects",
+  visual_complex: "complex visual hallucinations",
+  multimodal: "multimodal hallucinations",
+  thought_insertion: "thought insertion, withdrawal, or broadcasting",
+  delusions_control: "delusions of control or passivity",
+  grandiose: "grandiose delusions",
+  reference: "delusions of reference",
+  guilt_punishment: "delusions of guilt or deserved punishment",
+  persecutory: "persecutory delusions",
+  capgras: "Capgras or misidentification delusions",
+  infant_centered: "infant-centered delusions",
+  monothematic_systematized: "a single systematized non-bizarre delusion",
+  neg_symptoms: "negative symptoms",
+  disorganized_speech: "disorganized speech and formal thought disorder",
+  catatonia: "catatonic features",
+  stimulant_use: "recent stimulant use",
+  alcohol_heavy: "heavy alcohol use or withdrawal context",
+  no_substance: "negative substance history with negative tox screen",
+  fever: "fever",
+  seizure: "seizure activity",
+  dyskinesia_mutism: "orofacial dyskinesia, mutism, or speech disintegration",
+  abnormal_vitals: "abnormal vital signs",
+  autoimmune_hx: "a personal history of autoimmune disease",
+  parkinsonism: "parkinsonism",
+  focal_neuro: "focal neurologic deficit",
+};
+
+const proseLabel = (f: Feature): string => PROSE_LABELS[f.id] ?? f.label.toLowerCase();
+
+function generateSummary(activeFeatures: Feature[], ranked: any[], redFlags: string[], allFeatures: Feature[]): string {
+  if (activeFeatures.length === 0) {
+    return "No features selected. Toggle features at left to populate the differential.";
+  }
+
+  const formatList = (items: string[]): string => {
+    if (items.length === 0) return "";
+    if (items.length === 1) return items[0];
+    if (items.length === 2) return `${items[0]} and ${items[1]}`;
+    return items.slice(0, -1).join(", ") + ", and " + items[items.length - 1];
+  };
+
+  const demoIsAttrs = ["age_under18", "age_18_30", "age_30_45", "age_45_60", "age_over60", "sex_female", "sex_male", "currently_pregnant", "within_year_postpartum"];
+  const demoHxAttrs = ["fhx_scz", "fhx_bipolar", "fhx_neurodegen", "fhx_autoimmune", "prior_psychosis", "first_episode"];
+
+  const demoIs: string[] = [];
+  const demoHx: string[] = [];
+  const byGroup: Record<string, string[]> = {};
+
+  for (const f of activeFeatures) {
+    if (demoIsAttrs.includes(f.id)) demoIs.push(proseLabel(f));
+    else if (demoHxAttrs.includes(f.id)) demoHx.push(proseLabel(f));
+    else {
+      const g = f.group ?? "Other";
+      if (!byGroup[g]) byGroup[g] = [];
+      byGroup[g].push(proseLabel(f));
+    }
+  }
+
+  const demoClauses: string[] = [];
+  if (demoIs.length > 0) {
+    demoClauses.push(`Patient is ${formatList(demoIs)}.`);
+  }
+  if (demoHx.length > 0) {
+    demoClauses.push(`Relevant history includes ${formatList(demoHx)}.`);
+  }
+
+  const featureClauses: string[] = [];
+  const groupOrder: [string, string][] = [
+    ["Sensorium & cognition", "Mental status reveals"],
+    ["Onset & tempo", "Course is notable for"],
+    ["Mood episode coupling", "Mood findings include"],
+    ["Hallucinations", "Perceptual disturbance includes"],
+    ["Delusions", "Delusional content includes"],
+    ["Disorganization & negative symptoms", "Other findings include"],
+    ["Substance & exposure history", "Substance history is significant for"],
+    ["Neurologic & systemic red flags", "Notable medical findings include"],
+  ];
+  for (const [g, lead] of groupOrder) {
+    if (!byGroup[g]) continue;
+    featureClauses.push(`${lead} ${formatList(byGroup[g])}.`);
+  }
+
+  const top = ranked[0];
+  const considered = ranked.slice(0, 3).filter((dx: any, i: number) => i === 0 || dx.prob >= 0.01);
+
+  const dxClauses: string[] = [];
+  considered.forEach((dx: any, i: number) => {
+    if (dx.contrib.length === 0) return;
+    const positives = dx.contrib.filter((c: Contribution) => c.weight > 0).slice(0, 3);
+    const negatives = dx.contrib.filter((c: Contribution) => c.weight < 0).slice(0, 2);
+    const positiveLabels = positives.map((c: Contribution) => contribProseLabel(c, activeFeatures));
+    const negativeLabels = negatives.map((c: Contribution) => contribProseLabel(c, activeFeatures));
+    const rank = i === 0 ? "Leading consideration" : i === 1 ? "Second consideration" : "Third consideration";
+    let s = `${rank} is ${dx.label} (${(dx.prob * 100).toFixed(1)}%`;
+    if (dx.forcedIn) s += ", ruled in by feature";
+    s += ")";
+    if (positiveLabels.length > 0) {
+      s += `, supported by ${formatList(positiveLabels)}`;
+    }
+    if (negativeLabels.length > 0) {
+      s += `; argued against by ${formatList(negativeLabels)}`;
+    }
+    s += ".";
+    dxClauses.push(s);
+  });
+
+  const flagClauses: string[] = [];
+  if (redFlags.length > 0) {
+    const flagLabels = redFlags.map((id: string) => RED_FLAGS[id as keyof typeof RED_FLAGS]?.label).filter(Boolean) as string[];
+    flagClauses.push(`Red flags identified: ${formatList(flagLabels)}.`);
+    const critical = redFlags.find((id: string) => RED_FLAGS[id as keyof typeof RED_FLAGS]?.severity === "critical");
+    const flagToDetail = critical || redFlags[0];
+    if (flagToDetail && RED_FLAGS[flagToDetail as keyof typeof RED_FLAGS]) {
+      flagClauses.push(`Recommended workup: ${RED_FLAGS[flagToDetail as keyof typeof RED_FLAGS].detail}`);
+    }
+  }
+
+  const activeIds = new Set(activeFeatures.map((f) => f.id));
+  const topDxId = top?.id;
+  const competitorIds = considered.slice(1).map((d: any) => d.id);
+  const notableAbsent: string[] = [];
+  if (topDxId) {
+    for (const f of allFeatures) {
+      if (activeIds.has(f.id)) continue;
+      if (f.group === "Demographics & history") continue;
+      const wTop = (f.weights as any)?.[topDxId] ?? 0;
+      if (wTop <= -2) {
+        notableAbsent.push(proseLabel(f));
+        continue;
+      }
+      if (wTop <= 0) {
+        for (const cId of competitorIds) {
+          const wC = (f.weights as any)?.[cId] ?? 0;
+          if (wC >= 3) {
+            notableAbsent.push(proseLabel(f));
+            break;
+          }
+        }
+      }
+    }
+  }
+  let absenceClause = "";
+  if (notableAbsent.length > 0) {
+    const shown = notableAbsent.slice(0, 4);
+    absenceClause = `Notably absent are ${formatList(shown)}${notableAbsent.length > 4 ? ", among other features that would shift the differential" : ""}.`;
+  }
+
+  const parts = [
+    demoClauses.join(" "),
+    featureClauses.join(" "),
+    dxClauses.join(" "),
+    flagClauses.join(" "),
+    absenceClause,
+    "This ranking is generated by a semi-quantitative decision-support tool using ordinal feature weights; it represents relative prioritization of the differential rather than a calibrated diagnostic posterior. Clinical judgment supersedes tool output.",
+  ].filter(Boolean);
+
+  return parts.join(" ");
+}
+
+function contribProseLabel(contrib: Contribution, activeFeatures: Feature[]): string {
+  const f = activeFeatures.find((af: Feature) => af.label === contrib.feature);
+  return f ? proseLabel(f) : contrib.feature.toLowerCase();
+}
+
+// ============================================================
 // UI
 // ============================================================
 export default function PsychosisDx() {
@@ -516,6 +719,27 @@ export default function PsychosisDx() {
   );
 
   const { ranked, redFlags } = useMemo(() => scoreAll(activeFeatures), [activeFeatures]);
+
+  const summary = useMemo(
+    () => generateSummary(activeFeatures, ranked, redFlags, allFeatures),
+    [activeFeatures, ranked, redFlags, allFeatures]
+  );
+
+  const [copied, setCopied] = useState<boolean>(false);
+  const copySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = summary;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+      document.body.removeChild(ta);
+    }
+  };
 
   const toggle = (id: string) => {
     const next = new Set(active);
@@ -680,6 +904,9 @@ export default function PsychosisDx() {
               <button className={"tab-btn " + (tab === "dx" ? "active" : "")} onClick={() => setTab("dx")}>
                 Ranked Dx
               </button>
+              <button className={"tab-btn " + (tab === "summary" ? "active" : "")} onClick={() => setTab("summary")}>
+                Summary
+              </button>
               <button className={"tab-btn " + (tab === "ref" ? "active" : "")} onClick={() => setTab("ref")}>
                 Reference
               </button>
@@ -747,6 +974,49 @@ export default function PsychosisDx() {
               </div>
             )}
 
+            {tab === "summary" && (
+              <div style={{ background: "#fff", border: "1px solid #d6cfbe", borderTop: "none", padding: 16 }}>
+                {activeFeatures.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: "center", color: "#6b6258", fontSize: 13, fontStyle: "italic" }}>
+                    Toggle features at left to generate a documentation summary.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <div className="mono" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.12em", color: "#6b6258" }}>
+                        Documentation summary · PHI-free narrative
+                      </div>
+                      <button
+                        onClick={copySummary}
+                        className="mono"
+                        style={{
+                          fontSize: 10, padding: "5px 12px",
+                          background: copied ? "#2a5a3a" : "#1a1a1a",
+                          color: "#f5f2ea", border: "none",
+                          textTransform: "uppercase", letterSpacing: "0.08em",
+                          transition: "background 0.2s",
+                        }}
+                      >
+                        {copied ? "✓ Copied" : "Copy"}
+                      </button>
+                    </div>
+                    <div style={{
+                      fontSize: 13, lineHeight: 1.65, color: "#1a1a1a",
+                      fontFamily: "'Fraunces', Georgia, serif",
+                      background: "#faf6ec", padding: "14px 16px",
+                      border: "1px solid #e5dfce",
+                      whiteSpace: "pre-wrap",
+                    }}>
+                      {summary}
+                    </div>
+                    <div style={{ marginTop: 12, fontSize: 11, color: "#6b6258", fontStyle: "italic", lineHeight: 1.5 }}>
+                      Paste into your note and add patient-specific context. The tool intentionally does not accept patient identifiers.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {tab === "ref" && (
               <div style={{ background: "#fff", border: "1px solid #d6cfbe", borderTop: "none", padding: 16, fontSize: 13, lineHeight: 1.55 }}>
                 <ReferenceContent />
@@ -773,7 +1043,7 @@ export default function PsychosisDx() {
         </div>
 
         <footer className="mono" style={{ marginTop: 48, paddingTop: 16, borderTop: "1px solid #d6cfbe", fontSize: 10, color: "#6b6258", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.2
+          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.3
         </footer>
       </div>
     </div>
