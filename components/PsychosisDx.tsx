@@ -771,12 +771,24 @@ export default function PsychosisDx() {
         .feat-btn:hover { background: #ebe4d2; }
         .feat-btn.active { background: #1a1a1a; color: #f5f2ea; border-color: #1a1a1a; position: relative; z-index: 1; }
         .feat-btn.active:hover { background: #2a2a2a; }
-        .group-label {
-          font-family: 'JetBrains Mono', monospace; font-size: 10px;
-          text-transform: uppercase; letter-spacing: 0.12em;
-          color: #6b6258; margin: 18px 0 6px; font-weight: 500;
+        .group-panel {
+          background: #fdfbf4;
+          border: 1px solid #d6cfbe;
+          border-left: 3px solid #1a1a1a;
+          padding: 12px 14px 10px;
+          margin-bottom: 12px;
         }
-        .group-label:first-child { margin-top: 0; }
+        .group-panel:last-child { margin-bottom: 0; }
+        .group-label {
+          font-family: 'Fraunces', Georgia, serif;
+          font-size: 14px;
+          font-weight: 600;
+          color: #1a1a1a;
+          letter-spacing: -0.005em;
+          margin: 0 0 10px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #e5dfce;
+        }
         .dx-row {
           display: grid; grid-template-columns: 1fr auto auto;
           gap: 12px; align-items: center;
@@ -854,9 +866,9 @@ export default function PsychosisDx() {
               Toggle features present
             </h2>
 
-            <div style={{ background: "#fff", padding: 16, border: "1px solid #d6cfbe" }}>
+            <div style={{ background: "#fff", padding: 14, border: "1px solid #d6cfbe" }}>
               {FEATURES.map((g) => (
-                <div key={g.group}>
+                <div key={g.group} className="group-panel">
                   <div className="group-label">{g.group}</div>
                   {g.items.map((f) => (
                     <button
@@ -1043,7 +1055,7 @@ export default function PsychosisDx() {
         </div>
 
         <footer className="mono" style={{ marginTop: 48, paddingTop: 16, borderTop: "1px solid #d6cfbe", fontSize: 10, color: "#6b6258", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.3
+          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.3.1
         </footer>
       </div>
     </div>
