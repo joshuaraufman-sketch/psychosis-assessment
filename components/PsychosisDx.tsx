@@ -132,6 +132,11 @@ const FEATURES = [
         label: "First lifetime episode",
         weights: { atpd: 1, antinmda: 1, sle: 1, stim: 1, delusional: -1 },
       },
+      {
+        id: "visual_impairment",
+        label: "Significant visual impairment (cataract, macular degen, etc.)",
+        weights: { dlb: 1 },
+      },
     ],
   },
   // ---------- SENSORIUM / COURSE ----------
@@ -158,6 +163,11 @@ const FEATURES = [
         id: "perplexity",
         label: "Perplexity / disorientation w/ motor disturbance",
         weights: { mixed: 3, ppp: 3, cycloid: 2, atpd: 2, scz: -1 },
+      },
+      {
+        id: "intact_insight",
+        label: "Intact insight (recognizes hallucinations as not real)",
+        weights: { scz: -2, mania: -1, psymdd: -1, delusional: -2, atpd: -1 },
       },
     ],
   },
@@ -255,6 +265,12 @@ const FEATURES = [
         label: "Multimodal hallucinations (visual + tactile + auditory)",
         weights: { delirium: 2, antinmda: 2, sle: 2, stim: 1, scz: -2 },
       },
+      {
+        id: "olfactory_gustatory",
+        label: "Olfactory / gustatory hallucinations",
+        weights: { delirium: 2, antinmda: 1, sle: 1, scz: -2, mania: -2, psymdd: -1 },
+        redFlag: "temporal_workup",
+      },
     ],
   },
   // ---------- DELUSIONS ----------
@@ -349,6 +365,11 @@ const FEATURES = [
         label: "Negative substance history & negative tox screen",
         weights: { stim: -3, alcohol: -3, scz: 1, mania: 1 },
       },
+      {
+        id: "substance_persists",
+        label: "Psychosis persists >48h beyond last substance use",
+        weights: { stim: 2, alcohol: 2, scz: 1, delirium: -1 },
+      },
     ],
   },
   // ---------- NEURO / SYSTEMIC RED FLAGS ----------
@@ -430,6 +451,16 @@ const RED_FLAGS = {
     detail: "First lifetime psychotic episode after 60 has a high prior for neurodegenerative or medical etiology. Cognitive screening (MoCA), MRI brain, B12/TSH/RPR, consider DAT scan if parkinsonism present. Don't anchor on primary psychiatric diagnosis until neurodegen reasonably excluded.",
     severity: "high",
   },
+  temporal_workup: {
+    label: "Olfactory/gustatory hallucinations — temporal lobe / structural workup",
+    detail: "Olfactory and gustatory hallucinations are atypical for primary psychiatric illness and raise concern for temporal lobe epilepsy, structural lesion, or other neurological process. EEG (with temporal leads), MRI brain with attention to mesial temporal structures, neurology consult.",
+    severity: "high",
+  },
+  charles_bonnet: {
+    label: "Consider Charles Bonnet syndrome — do not anchor on psychosis",
+    detail: "Visual hallucinations in a patient with significant visual impairment and INTACT insight, without other psychotic features, suggests Charles Bonnet syndrome (release hallucinations from visual deprivation). This is benign and does NOT warrant antipsychotics. Optimize the underlying visual impairment; reassure. Re-evaluate if delusions, disorganization, or loss of insight emerge.",
+    severity: "high",
+  },
 };
 
 // ============================================================
@@ -472,6 +503,28 @@ function scoreAll(activeFeatures: Feature[]) {
   // psychiatric Dx ranks in the scoreboard.
   if (activeIds.has("age_over60") && activeIds.has("first_episode")) {
     triggeredFlags.add("neurodegen_workup");
+  }
+
+  // Charles Bonnet pattern: visual hallucinations + visual impairment +
+  // intact insight, AND absence of features that would indicate a primary
+  // or organic psychotic process. The absence clause is what distinguishes
+  // Charles Bonnet from DLB/late-onset psychosis in a visually impaired
+  // patient — without it, this would misfire on a DLB patient who also
+  // happens to have cataracts.
+  const cbExclusionary = [
+    "thought_insertion", "delusions_control", "grandiose", "reference",
+    "guilt_punishment", "persecutory", "capgras", "infant_centered",
+    "monothematic_systematized", "neg_symptoms", "disorganized_speech",
+    "catatonia", "cognitive_decline", "parkinsonism", "fluctuating_attention",
+  ];
+  const cbHasExclusion = cbExclusionary.some((id) => activeIds.has(id));
+  if (
+    (activeIds.has("visual_inanimate") || activeIds.has("visual_complex")) &&
+    activeIds.has("visual_impairment") &&
+    activeIds.has("intact_insight") &&
+    !cbHasExclusion
+  ) {
+    triggeredFlags.add("charles_bonnet");
   }
 
   // Convert ordinal scores to softmax-like probabilities for display.
@@ -1055,7 +1108,7 @@ export default function PsychosisDx() {
         </div>
 
         <footer className="mono" style={{ marginTop: 48, paddingTop: 16, borderTop: "1px solid #d6cfbe", fontSize: 10, color: "#6b6258", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.3.1
+          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.4
         </footer>
       </div>
     </div>
