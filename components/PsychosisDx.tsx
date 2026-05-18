@@ -252,13 +252,13 @@ const FEATURES = [
       {
         id: "visual_inanimate",
         label: "Visual hallucinations (shadows, flashes, inanimate)",
-        weights: { delirium: 2, dlb: 3, sle: 2, antinmda: 1, scz: -2 },
+        weights: { delirium: 2, dlb: 3, sle: 2, antinmda: 1, scz: -1 },
         // backed by meta-analysis: 3x more likely in secondary
       },
       {
         id: "visual_complex",
         label: "Complex visual hallucinations (people, animals)",
-        weights: { dlb: 3, antinmda: 2, delirium: 2, stim: 1, scz: -1 },
+        weights: { dlb: 3, antinmda: 2, delirium: 2, stim: 1, scz: 0 },
       },
       {
         id: "multimodal",
@@ -464,6 +464,47 @@ const RED_FLAGS = {
 };
 
 // ============================================================
+// Weight provenance — which feature weights are anchored to
+// published evidence vs. expert judgment. Keyed by feature id.
+// Absence from this map = expert-judgment calibration (the
+// default for the large majority of weights). This is
+// deliberately honest: most feature×diagnosis cells have no
+// published likelihood ratio because the discriminating study
+// was never done.
+// ============================================================
+type WeightEvidence = {
+  tier: "meta-analysis" | "review" | "case-control";
+  summary: string;
+  citation: string;
+  doi: string;
+};
+
+const WEIGHT_EVIDENCE: Record<string, WeightEvidence> = {
+  visual_inanimate: {
+    tier: "meta-analysis",
+    summary:
+      "Visual hallucinations associated with secondary psychosis (pooled OR 3.0, 95% CI 1.7–5.1; 14 studies, 904 primary vs 804 secondary). Hallucinations of inanimate objects specifically more likely in secondary psychosis. Prevalence of VH in schizophrenia ~27% (29-study review) — the schizophrenia weight is intentionally only mildly negative because VH do NOT rule out a primary cause.",
+    citation:
+      "Blackman et al. 2023, Cogn Neuropsychiatry; Waters et al. 2014, Schizophr Bull",
+    doi: "10.1080/13546805.2023.2266872",
+  },
+  visual_complex: {
+    tier: "review",
+    summary:
+      "Complex visual hallucinations are well-documented in schizophrenia (described as remarkably complex and negative in content; weighted-mean VH prevalence 27% in schizophrenia, 15% in affective psychosis). Schizophrenia weight set to neutral rather than negative on this basis.",
+    citation: "Waters et al. 2014, Schizophr Bull",
+    doi: "10.1093/schbul/sbu036",
+  },
+  neg_symptoms: {
+    tier: "case-control",
+    summary:
+      "Negative symptoms significantly higher in schizophrenia than prolonged methamphetamine-induced psychosis (p=0.034; n=60). Supports the existing strong positive schizophrenia weight. Small single-site sample — supporting evidence, not a calibration anchor.",
+    citation: "Ahmadkhaniha et al. 2022, Basic Clin Neurosci",
+    doi: "10.32598/bcn.2021.2837.1",
+  },
+};
+
+// ============================================================
 // Scoring
 // ============================================================
 type Feature = {
@@ -617,6 +658,13 @@ const PROSE_LABELS: Record<string, string> = {
 };
 
 const proseLabel = (f: Feature): string => PROSE_LABELS[f.id] ?? f.label.toLowerCase();
+
+const featureIdByLabel: Record<string, string> = {};
+for (const g of FEATURES) {
+  for (const it of g.items) {
+    featureIdByLabel[it.label] = it.id;
+  }
+}
 
 function generateSummary(activeFeatures: Feature[], ranked: any[], redFlags: string[], allFeatures: Feature[]): string {
   if (activeFeatures.length === 0) {
@@ -906,7 +954,7 @@ export default function PsychosisDx() {
 
         {/* Calibration disclaimer */}
         <div style={{ background: "#fdf8e8", border: "1px solid #d6cfbe", padding: "10px 14px", marginBottom: 24, fontSize: 12, lineHeight: 1.5, color: "#4a4338" }}>
-          <strong style={{ fontWeight: 600 }}>Calibration note.</strong> Weights are ordinal and reflect literature where published LRs exist (visual hallucinations ~3× more common in secondary psychosis; ~62% grandiose delusions in mania) and the reference document's framing elsewhere. Probabilities shown are <em>relative ranking</em>, not calibrated posteriors. Red-flag layer operates independently of scoring. Decision support only — not a substitute for clinical judgment.
+          <strong style={{ fontWeight: 600 }}>Calibration note.</strong> Weights are ordinal and reflect literature where published LRs exist (visual hallucinations ~3× more common in secondary psychosis; ~62% grandiose delusions in mania) and the reference document's framing elsewhere. Probabilities shown are <em>relative ranking</em>, not calibrated posteriors. Red-flag layer operates independently of scoring. Decision support only — not a substitute for clinical judgment. Weights marked EV in the score breakdown are anchored to cited literature; the majority are expert-judgment calibration and have not been validated against clinical outcomes.
         </div>
 
         <div className="layout" style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 32 }}>
@@ -1021,15 +1069,42 @@ export default function PsychosisDx() {
                             {dx.contrib.length === 0 ? (
                               <div style={{ fontSize: 12, fontStyle: "italic", color: "#6b6258" }}>No active features touch this diagnosis.</div>
                             ) : (
-                              dx.contrib.map((c: Contribution, j: number) => (
-                                <div key={j} className="contrib-row">
-                                  <span>{c.feature}</span>
-                                  <span className={c.weight > 0 ? "w-pos" : "w-neg"}>
-                                    {c.weight > 0 ? "+" : ""}{c.weight}
-                                  </span>
-                                </div>
-                              ))
+                              dx.contrib.map((c: Contribution, j: number) => {
+                                const evId = featureIdByLabel[c.feature];
+                                const ev = evId ? WEIGHT_EVIDENCE[evId] : undefined;
+                                return (
+                                  <div key={j} className="contrib-row">
+                                    <span>{c.feature}</span>
+                                    <span style={{ display: "inline-flex", alignItems: "center" }}>
+                                      <span className={c.weight > 0 ? "w-pos" : "w-neg"}>
+                                        {c.weight > 0 ? "+" : ""}{c.weight}
+                                      </span>
+                                      {ev && (
+                                        <span
+                                          title={`${ev.summary} — ${ev.citation}`}
+                                          className="mono"
+                                          style={{
+                                            fontSize: 9,
+                                            textTransform: "uppercase",
+                                            letterSpacing: "0.06em",
+                                            color: "#2a5a3a",
+                                            border: "1px solid #2a5a3a",
+                                            padding: "1px 4px",
+                                            marginLeft: 8,
+                                            cursor: "help",
+                                          }}
+                                        >
+                                          EV
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                );
+                              })
                             )}
+                            <div className="mono" style={{ fontSize: 9, color: "#6b6258", marginTop: 8, letterSpacing: "0.05em" }}>
+                              EV = weight anchored to published evidence (hover for source). Unmarked weights are expert-judgment calibration.
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1108,7 +1183,7 @@ export default function PsychosisDx() {
         </div>
 
         <footer className="mono" style={{ marginTop: 48, paddingTop: 16, borderTop: "1px solid #d6cfbe", fontSize: 10, color: "#6b6258", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.4
+          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.5
         </footer>
       </div>
     </div>
