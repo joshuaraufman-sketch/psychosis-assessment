@@ -280,12 +280,12 @@ const FEATURES = [
       {
         id: "thought_insertion",
         label: "Thought insertion / withdrawal / broadcasting",
-        weights: { scz: 3, mania: -1, psymdd: -1, delirium: -2 },
+        weights: { scz: 3, mania: 0, psymdd: -1, delirium: -2 },
       },
       {
         id: "delusions_control",
         label: "Delusions of control / passivity",
-        weights: { scz: 3, mania: -1, delirium: -1 },
+        weights: { scz: 3, mania: 0, delirium: -1 },
       },
       {
         id: "grandiose",
@@ -501,6 +501,29 @@ const WEIGHT_EVIDENCE: Record<string, WeightEvidence> = {
       "Negative symptoms significantly higher in schizophrenia than prolonged methamphetamine-induced psychosis (p=0.034; n=60). Supports the existing strong positive schizophrenia weight. Small single-site sample — supporting evidence, not a calibration anchor.",
     citation: "Ahmadkhaniha et al. 2022, Basic Clin Neurosci",
     doi: "10.32598/bcn.2021.2837.1",
+  },
+  thought_insertion: {
+    tier: "review",
+    summary:
+      "First-rank symptoms (incl. thought insertion/withdrawal/broadcast) occur in ~a third of bipolar patients, particularly in mania (systematic review of 339 studies; meta-analysis n=23,461). The strong schizophrenia weight is retained, but the prior negative mania weight was not supported and has been set to neutral — these symptoms point toward schizophrenia without arguing against mania.",
+    citation:
+      "Chakrabarti & Singh 2022, World J Psychiatry; Aminoff et al. 2022, Psychol Med",
+    doi: "10.5498/wjp.v12.i9.1204",
+  },
+  delusions_control: {
+    tier: "review",
+    summary:
+      "Passivity/control phenomena are reported in ~23-24% of patients during manic episodes (339-study systematic review). Schizophrenia weight retained; prior negative mania weight set to neutral as unsupported.",
+    citation: "Chakrabarti & Singh 2022, World J Psychiatry",
+    doi: "10.5498/wjp.v12.i9.1204",
+  },
+  grandiose: {
+    tier: "meta-analysis",
+    summary:
+      "Grandiose delusions present in ~57% of current manic episodes (pooled across 17 studies in a 339-study review; corroborated by a 54-study meta-analysis, n=23,461, with BDI lifetime psychotic-symptom prevalence 63%). The existing strong positive mania weight is confirmed by the evidence — no value change; this entry documents provenance for a weight that was already correct.",
+    citation:
+      "Chakrabarti & Singh 2022, World J Psychiatry; Aminoff et al. 2022, Psychol Med",
+    doi: "10.1017/S003329172200201X",
   },
 };
 
@@ -954,7 +977,7 @@ export default function PsychosisDx() {
 
         {/* Calibration disclaimer */}
         <div style={{ background: "#fdf8e8", border: "1px solid #d6cfbe", padding: "10px 14px", marginBottom: 24, fontSize: 12, lineHeight: 1.5, color: "#4a4338" }}>
-          <strong style={{ fontWeight: 600 }}>Calibration note.</strong> Weights are ordinal and reflect literature where published LRs exist (visual hallucinations ~3× more common in secondary psychosis; ~62% grandiose delusions in mania) and the reference document's framing elsewhere. Probabilities shown are <em>relative ranking</em>, not calibrated posteriors. Red-flag layer operates independently of scoring. Decision support only — not a substitute for clinical judgment. Weights marked EV in the score breakdown are anchored to cited literature; the majority are expert-judgment calibration and have not been validated against clinical outcomes.
+          <strong style={{ fontWeight: 600 }}>Calibration note.</strong> Weights are ordinal and reflect literature where published LRs exist (visual hallucinations ~3× more common in secondary psychosis; ~62% grandiose delusions in mania) and the reference document's framing elsewhere. Probabilities shown are <em>relative ranking</em>, not calibrated posteriors. Red-flag layer operates independently of scoring. Decision support only — not a substitute for clinical judgment. Weights marked EV in the score breakdown are anchored to cited literature; the majority are expert-judgment calibration and have not been validated against clinical outcomes. The evidence layer now reflects two literature passes; it confirms some weights and corrects others, but covers only a small fraction of all weights.
         </div>
 
         <div className="layout" style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 32 }}>
@@ -1183,7 +1206,7 @@ export default function PsychosisDx() {
         </div>
 
         <footer className="mono" style={{ marginTop: 48, paddingTop: 16, borderTop: "1px solid #d6cfbe", fontSize: 10, color: "#6b6258", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.5
+          Built from ICD-11 / WKL / Kraepelin framing · evidence-graded weights · v0.6
         </footer>
       </div>
     </div>
